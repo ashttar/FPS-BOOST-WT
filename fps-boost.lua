@@ -1,16 +1,12 @@
--- Services.
 local lightingService = game:GetService("Lighting")
 local playersService = game:GetService("Players")
 local workspaceService = game:GetService("Workspace")
 
--- State.
 local localPlayer = playersService.LocalPlayer or playersService:GetPropertyChangedSignal("LocalPlayer"):Wait()
 local playerGui = localPlayer:WaitForChild("PlayerGui", 10)
 
--- Constants.
 local GRAY_COLOR = Color3.fromRGB(128, 128, 128)
 
--- Whitelist Table (العناصر المستثناة من الإخفاء أو الحذف)
 local WHITELIST = {
 	"Riot Shield",
 	"Remington MSR",
@@ -20,7 +16,6 @@ local WHITELIST = {
 	"Kar98K"
 }
 
--- Classes to destroy completely (Fire & Particle Effects)
 local FIRE_CLASSES = {
 	"Fire",
 	"Smoke",
@@ -28,7 +23,6 @@ local FIRE_CLASSES = {
 	"Sparkles"
 }
 
--- Keywords to make invisible (Transparency = 1, Keeping Collision)
 local TARGET_KEYWORDS = {
 	"grass",
 	"sandstone building",
@@ -102,9 +96,6 @@ local TARGET_KEYWORDS = {
 	"partcrate"
 }
 
----Check if an instance is part of the local player's inventory or equipped tools.
----@param instance Instance
----@return boolean
 local function isPlayerToolOrInventory(instance)
 	if not localPlayer then return false end
 
@@ -127,9 +118,6 @@ local function isPlayerToolOrInventory(instance)
 	return false
 end
 
----Check if an instance or any parent matches the whitelist.
----@param instance Instance
----@return boolean
 local function isWhitelisted(instance)
 	local current = instance
 	while current and current ~= workspace do
@@ -144,9 +132,6 @@ local function isWhitelisted(instance)
 	return false
 end
 
----Check if an instance is a non-player character.
----@param instance Instance
----@return boolean
 local function isNpc(instance)
 	if not instance:IsA("Model") then
 		return false
@@ -161,9 +146,6 @@ local function isNpc(instance)
 	return player == nil
 end
 
----Check if instance is a fire or particle effect.
----@param instance Instance
----@return boolean
 local function isFireEffect(instance)
 	for _, className in ipairs(FIRE_CLASSES) do
 		if instance:IsA(className) then
@@ -177,9 +159,6 @@ local function isFireEffect(instance)
 		or string.find(lowerName, "burn", 1, true) ~= nil
 end
 
----Check if an instance or any of its parents match target keywords.
----@param instance Instance
----@return boolean
 local function matchesKeywords(instance)
 	if isWhitelisted(instance) then
 		return false
@@ -198,8 +177,6 @@ local function matchesKeywords(instance)
 	return false
 end
 
----Safely process target workspace instance.
----@param instance Instance
 local function processWorkspaceInstance(instance)
 	if isPlayerToolOrInventory(instance) or isWhitelisted(instance) then
 		return
@@ -221,7 +198,6 @@ local function processWorkspaceInstance(instance)
 	end
 end
 
----Enforce gray sky settings and lock them.
 local function enforceGraySky()
 	pcall(function()
 		lightingService.Ambient = GRAY_COLOR
@@ -251,8 +227,6 @@ local function enforceGraySky()
 	end)
 end
 
----Remove unwanted lighting effects.
----@param child Instance
 local function removeLightingEffects(child)
 	if child.Name == "LockedGraySky" then return end
 
@@ -272,8 +246,6 @@ local function removeLightingEffects(child)
 	enforceGraySky()
 end
 
----Remove OxygenBar from PlayerGui.
----@param descendant Instance
 local function checkAndDestroyOxygenBar(descendant)
 	if descendant.Name == "OxygenBar" then
 		pcall(function()
@@ -282,13 +254,11 @@ local function checkAndDestroyOxygenBar(descendant)
 	end
 end
 
--- Process current workspace descendants.
 for _, descendant in ipairs(workspaceService:GetDescendants()) do
 	processWorkspaceInstance(descendant)
 end
 workspaceService.DescendantAdded:Connect(processWorkspaceInstance)
 
--- Enforce Gray Sky & process lighting.
 enforceGraySky()
 for _, child in ipairs(lightingService:GetChildren()) do
 	removeLightingEffects(child)
@@ -296,7 +266,6 @@ end
 lightingService.ChildAdded:Connect(removeLightingEffects)
 lightingService.Changed:Connect(enforceGraySky)
 
--- Process OxygenBar in PlayerGui.
 if playerGui then
 	for _, descendant in ipairs(playerGui:GetDescendants()) do
 		checkAndDestroyOxygenBar(descendant)
