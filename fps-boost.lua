@@ -10,6 +10,16 @@ local playerGui = localPlayer:WaitForChild("PlayerGui", 10)
 -- Constants.
 local GRAY_COLOR = Color3.fromRGB(128, 128, 128)
 
+-- Whitelist Table (العناصر المستثناة من الإخفاء أو الحذف)
+local WHITELIST = {
+	"Riot Shield",
+	"Remington MSR",
+	"AWP",
+	"M1903 Springfield",
+	"M40 Sniper",
+	"Kar98K"
+}
+
 -- Classes to destroy completely (Fire & Particle Effects)
 local FIRE_CLASSES = {
 	"Fire",
@@ -117,14 +127,17 @@ local function isPlayerToolOrInventory(instance)
 	return false
 end
 
----Check if an instance is Riot Shield.
+---Check if an instance or any parent matches the whitelist.
 ---@param instance Instance
 ---@return boolean
-local function isRiotShield(instance)
+local function isWhitelisted(instance)
 	local current = instance
 	while current and current ~= workspace do
-		if string.find(current.Name:lower(), "riot shield", 1, true) then
-			return true
+		local lowerName = current.Name:lower()
+		for _, name in ipairs(WHITELIST) do
+			if string.find(lowerName, name:lower(), 1, true) then
+				return true
+			end
 		end
 		current = current.Parent
 	end
@@ -168,7 +181,7 @@ end
 ---@param instance Instance
 ---@return boolean
 local function matchesKeywords(instance)
-	if isRiotShield(instance) then
+	if isWhitelisted(instance) then
 		return false
 	end
 
@@ -188,7 +201,7 @@ end
 ---Safely process target workspace instance.
 ---@param instance Instance
 local function processWorkspaceInstance(instance)
-	if isPlayerToolOrInventory(instance) or isRiotShield(instance) then
+	if isPlayerToolOrInventory(instance) or isWhitelisted(instance) then
 		return
 	end
 
