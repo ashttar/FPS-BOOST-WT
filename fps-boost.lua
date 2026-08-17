@@ -1,19 +1,11 @@
--- Check for table that is shared between executions.
-if not shared then
-	return warn("No shared, no script.")
-end
-
--- Initialize Luraph globals if they do not exist.
-loadstring("getfenv().LPH_NO_VIRTUALIZE = function(...) return ... end")()
-
 -- Services.
 local lightingService = game:GetService("Lighting")
 local playersService = game:GetService("Players")
 local workspaceService = game:GetService("Workspace")
 
 -- State.
-local localPlayer = playersService.LocalPlayer
-local playerGui = localPlayer:WaitForChild("PlayerGui")
+local localPlayer = playersService.LocalPlayer or playersService:GetPropertyChangedSignal("LocalPlayer"):Wait()
+local playerGui = localPlayer:WaitForChild("PlayerGui", 10)
 
 -- Constants.
 local GRAY_COLOR = Color3.fromRGB(128, 128, 128)
@@ -100,6 +92,45 @@ local TARGET_KEYWORDS = {
 	"partcrate"
 }
 
+---Check if an instance is part of the local player's inventory or equipped tools.
+---@param instance Instance
+---@return boolean
+local function isPlayerToolOrInventory(instance)
+	if not localPlayer then return false end
+
+	local backpack = localPlayer:FindFirstChildOfClass("Backpack") or localPlayer:FindFirstChild("Backpack")
+	if backpack and (instance == backpack or instance:IsDescendantOf(backpack)) then
+		return true
+	end
+
+	local character = localPlayer.Character
+	if character and (instance == character or instance:IsDescendantOf(character)) then
+		local current = instance
+		while current and current ~= character do
+			if current:IsA("Tool") or current:IsA("HopperBin") or current:IsA("Accoutrement") then
+				return true
+			end
+			current = current.Parent
+		end
+	end
+
+	return false
+end
+
+---Check if an instance is Riot Shield.
+---@param instance Instance
+---@return boolean
+local function isRiotShield(instance)
+	local current = instance
+	while current and current ~= workspace do
+		if string.find(current.Name:lower(), "riot shield", 1, true) then
+			return true
+		end
+		current = current.Parent
+	end
+	return false
+end
+
 ---Check if an instance is a non-player character.
 ---@param instance Instance
 ---@return boolean
@@ -128,51 +159,39 @@ local function isFireEffect(instance)
 	end
 
 	local lowerName = instance.Name:lower()
-	if string.find(lowerName, "fire", 1, true) or string.find(lowerName, "flame", 1, true) or string.find(lowerName, "burn", 1, true) then
-		return true
-	end
-
-	return false
+	return string.find(lowerName, "fire", 1, true) ~= nil 
+		or string.find(lowerName, "flame", 1, true) ~= nil 
+		or string.find(lowerName, "burn", 1, true) ~= nil
 end
 
----Check if an instance matches target keywords.
+---Check if an instance or any of its parents match target keywords.
 ---@param instance Instance
 ---@return boolean
 local function matchesKeywords(instance)
-	local lowerName = instance.Name:lower()
-	for _, keyword in ipairs(TARGET_KEYWORDS) do
-		if string.find(lowerName, keyword, 1, true) then
-			return true
-		end
+	if isRiotShield(instance) then
+		return false
 	end
-	return false
-end
 
----Make instance invisible without altering collision.
----@param instance Instance
-local function makeInvisible(instance)
-	pcall(function()
-		if instance:IsA("BasePart") then
-			instance.Transparency = 1
-		elseif instance:IsA("Decal") or instance:IsA("Texture") then
-			instance.Transparency = 1
-		end
-
-		for _, descendant in ipairs(instance:GetDescendants()) do
-			if descendant:IsA("BasePart") then
-				descendant.Transparency = 1
-			elseif descendant:IsA("Decal") or descendant:IsA("Texture") then
-				descendant.Transparency = 1
-			elseif isFireEffect(descendant) then
-				descendant:Destroy()
+	local current = instance
+	while current and current ~= workspace do
+		local lowerName = current.Name:lower()
+		for _, keyword in ipairs(TARGET_KEYWORDS) do
+			if string.find(lowerName, keyword, 1, true) then
+				return true
 			end
 		end
-	end)
+		current = current.Parent
+	end
+	return false
 end
 
 ---Safely process target workspace instance.
 ---@param instance Instance
 local function processWorkspaceInstance(instance)
+	if isPlayerToolOrInventory(instance) or isRiotShield(instance) then
+		return
+	end
+
 	if isFireEffect(instance) then
 		pcall(function()
 			instance:Destroy()
@@ -181,7 +200,11 @@ local function processWorkspaceInstance(instance)
 	end
 
 	if isNpc(instance) or matchesKeywords(instance) then
-		makeInvisible(instance)
+		pcall(function()
+			if instance:IsA("BasePart") or instance:IsA("Decal") or instance:IsA("Texture") then
+				instance.Transparency = 1
+			end
+		end)
 	end
 end
 
@@ -192,14 +215,12 @@ local function enforceGraySky()
 		lightingService.OutdoorAmbient = GRAY_COLOR
 		lightingService.FogColor = GRAY_COLOR
 
-		-- Remove sky texture layers & atmosphere if present
 		for _, child in ipairs(lightingService:GetChildren()) do
-			if child:IsA("Sky") or child:IsA("Atmosphere") or child:IsA("ColorCorrectionEffect") or child:IsA("BlurEffect") then
+			if (child:IsA("Sky") or child:IsA("Atmosphere") or child:IsA("ColorCorrectionEffect") or child:IsA("BlurEffect")) and child.Name ~= "LockedGraySky" then
 				child:Destroy()
 			end
 		end
 
-		-- Create a solid gray skybox
 		local graySky = lightingService:FindFirstChild("LockedGraySky")
 		if not graySky then
 			graySky = Instance.new("Sky")
@@ -220,9 +241,7 @@ end
 ---Remove unwanted lighting effects.
 ---@param child Instance
 local function removeLightingEffects(child)
-	if child.Name == "LockedGraySky" then
-		return
-	end
+	if child.Name == "LockedGraySky" then return end
 
 	local lowerName = child.Name:lower()
 	if child:IsA("ColorCorrectionEffect")
@@ -265,7 +284,9 @@ lightingService.ChildAdded:Connect(removeLightingEffects)
 lightingService.Changed:Connect(enforceGraySky)
 
 -- Process OxygenBar in PlayerGui.
-for _, descendant in ipairs(playerGui:GetDescendants()) do
-	checkAndDestroyOxygenBar(descendant)
+if playerGui then
+	for _, descendant in ipairs(playerGui:GetDescendants()) do
+		checkAndDestroyOxygenBar(descendant)
+	end
+	playerGui.DescendantAdded:Connect(checkAndDestroyOxygenBar)
 end
-playerGui.DescendantAdded:Connect(checkAndDestroyOxygenBar)
