@@ -15,6 +15,9 @@ local workspaceService = game:GetService("Workspace")
 local localPlayer = playersService.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
+-- Constants.
+local GRAY_COLOR = Color3.fromRGB(128, 128, 128)
+
 -- Classes to destroy completely (Fire & Particle Effects)
 local FIRE_CLASSES = {
 	"Fire",
@@ -182,13 +185,50 @@ local function processWorkspaceInstance(instance)
 	end
 end
 
----Remove lighting effects.
+---Enforce gray sky settings and lock them.
+local function enforceGraySky()
+	pcall(function()
+		lightingService.Ambient = GRAY_COLOR
+		lightingService.OutdoorAmbient = GRAY_COLOR
+		lightingService.FogColor = GRAY_COLOR
+
+		-- Remove sky texture layers & atmosphere if present
+		for _, child in ipairs(lightingService:GetChildren()) do
+			if child:IsA("Sky") or child:IsA("Atmosphere") or child:IsA("ColorCorrectionEffect") or child:IsA("BlurEffect") then
+				child:Destroy()
+			end
+		end
+
+		-- Create a solid gray skybox
+		local graySky = lightingService:FindFirstChild("LockedGraySky")
+		if not graySky then
+			graySky = Instance.new("Sky")
+			graySky.Name = "LockedGraySky"
+			graySky.SkyboxBk = ""
+			graySky.SkyboxDn = ""
+			graySky.SkyboxFt = ""
+			graySky.SkyboxLf = ""
+			graySky.SkyboxRt = ""
+			graySky.SkyboxUp = ""
+			graySky.SunTextureId = ""
+			graySky.MoonTextureId = ""
+			graySky.Parent = lightingService
+		end
+	end)
+end
+
+---Remove unwanted lighting effects.
 ---@param child Instance
 local function removeLightingEffects(child)
+	if child.Name == "LockedGraySky" then
+		return
+	end
+
 	local lowerName = child.Name:lower()
 	if child:IsA("ColorCorrectionEffect")
 		or child:IsA("BlurEffect")
 		or child:IsA("Atmosphere")
+		or child:IsA("Sky")
 		or string.find(lowerName, "colorcorrection", 1, true)
 		or string.find(lowerName, "blur", 1, true)
 		or string.find(lowerName, "atmosphere", 1, true) then
@@ -196,6 +236,8 @@ local function removeLightingEffects(child)
 			child:Destroy()
 		end)
 	end
+
+	enforceGraySky()
 end
 
 ---Remove OxygenBar from PlayerGui.
@@ -214,11 +256,13 @@ for _, descendant in ipairs(workspaceService:GetDescendants()) do
 end
 workspaceService.DescendantAdded:Connect(processWorkspaceInstance)
 
--- Process lighting effects.
+-- Enforce Gray Sky & process lighting.
+enforceGraySky()
 for _, child in ipairs(lightingService:GetChildren()) do
 	removeLightingEffects(child)
 end
 lightingService.ChildAdded:Connect(removeLightingEffects)
+lightingService.Changed:Connect(enforceGraySky)
 
 -- Process OxygenBar in PlayerGui.
 for _, descendant in ipairs(playerGui:GetDescendants()) do
